@@ -1,0 +1,356 @@
+---
+title: "coffeshop_data_analysis"
+author: "123200081_Syihabudin Rahmat Ramadhan_Kuis_IF-F"
+date: "11/27/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+
+library(ggplot2)
+library(dplyr)
+library(readxl)
+library(here)
+library(vroom)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+here()
+getwd()
+sales = read_xlsx( "NYC Coffee Shop Sales.xlsx")
+str(sales)
+```
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+# Menghitung total penjualan per toko
+sales_by_store <- sales %>%
+  group_by(store_id, store_location) %>%
+  summarise(total_sales = sum(unit_price * transaction_qty))
+
+# Membuat plot bar untuk penjualan per toko
+ggplot(sales_by_store, aes(x = store_location, y = total_sales, fill = factor(store_location))) +
+  geom_bar(stat = "identity") +
+  labs(title = "Total Penjualan per Store", x = "Store Location", y = "Total Sales") +
+  theme_minimal()
+
+```
+
+
+```{r}
+# Menghitung total penjualan per produk
+sales_by_product <- sales %>%
+  group_by(product_id, product_type) %>%
+  summarise(total_sales = sum(unit_price * transaction_qty))
+
+# Memilih produk terlaris
+top_product <- sales_by_product %>%
+  arrange(desc(total_sales)) %>%
+  slice(1)
+
+# Membuat plot bar untuk produk terlaris
+ggplot(top_product, aes(x = reorder(product_type, -total_sales), y = total_sales, fill = factor(product_type))) +
+  geom_bar(stat = "identity") +
+  labs(title = "Produk Terlaris", x = "Product Type", y = "Total Sales") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+```{r}
+# Menghitung jumlah transaksi per lokasi
+transactions_by_location <- sales %>%
+  group_by(store_location) %>%
+  summarise(total_transactions = n())
+
+# Membuat plot bar untuk jumlah transaksi per lokasi
+ggplot(transactions_by_location, aes(x = store_location, y = total_transactions)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Jumlah Transaksi per Lokasi", x = "Store Location", y = "Total Transactions") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+```{r}
+# Menghitung total penjualan per kategori produk
+sales_by_category <- sales %>%
+  group_by(product_category) %>%
+  summarise(total_sales = sum(unit_price * transaction_qty))
+
+
+sales_by_category
+
+# Membuat plot bar untuk penjualan per kategori produk
+ggplot(sales_by_category, aes(x = product_category, y = total_sales, fill = product_category)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Total Penjualan per Kategori Produk", x = "Product Category", y = "Total Sales") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(labels = scales::dollar_format(scale = 1e-3, suffix = "K"))
+
+
+```
+```{r}
+# Menghitung jumlah pembelian per kategori
+purchases_by_category <- sales %>%
+  group_by(product_category) %>%
+  summarise(total_purchases = sum(transaction_qty))
+
+
+purchases_by_category
+
+# Menemukan kategori yang paling laris
+top_category <- purchases_by_category %>%
+  arrange(desc(total_purchases)) %>%
+  slice(1)
+
+# Membuat plot bar untuk jumlah pembelian per kategori
+ggplot(purchases_by_category, aes(x = reorder(product_category, -total_purchases), y = total_purchases, fill = product_category)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Jumlah Pembelian per Kategori", x = "Product Category", y = "Total Purchases") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(labels = scales::comma_format(scale = 1e-3, suffix = "K")) +
+  geom_text(data = top_category, aes(x = product_category, y = total_purchases, label = total_purchases), vjust = -0.5, size = 4, color = "red")
+```
+
+
+```{r}
+sales_by_store <- sales %>%
+  mutate(transaction_date = as.Date(transaction_date, format = "%m/%d/%Y"),
+         total_sales = transaction_qty * unit_price)
+
+# Buat tabel baru dengan kolom yang diinginkan
+data <- sales_by_store %>%
+  group_by(transaction_date, store_location) %>%
+  summarise(total_sales = sum(total_sales))
+
+# Tampilkan tabel baru
+print(data)
+
+head(data)
+
+
+```
+```{r}
+library(caret)
+set.seed(123)  # Atur biji acak untuk reproducibility
+index <- createDataPartition(data$total_sales, p = 0.8, list = FALSE)
+train_data <- data[index, ]
+test_data <- data[-index, ]
+model <- lm(total_sales ~ transaction_date + store_location , data = train_data)
+print(model)
+```
+```{r}
+predictions <- predict(model, newdata = test_data)
+rmse <- sqrt(mean((predictions - test_data$total_sales)^2))
+
+print(rmse)
+```
+
+```{r}
+ggplot() +
+  geom_point(aes(x = test_data$total_sales, y = predictions)) +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(x = "Actual Sales", y = "Predicted Sales", title = "Actual vs. Predicted Sales")
+
+```
+```{r}
+new_data <- data.frame(
+  transaction_date = as.Date("2023-10-05"),
+  store_location = "Astoria"
+)
+
+new_prediction <- predict(model, newdata = new_data)
+print(new_prediction)
+
+
+```
+```{r}
+library(shiny)
+library(ggplot2)
+library(dplyr)
+library(readxl)
+
+
+sales <- read_xlsx("NYC Coffee Shop Sales.xlsx")
+store_locations <- c("Astoria", "Hell's Kitchen", "Lower Manhattan")
+
+
+ui <- fluidPage(
+  titlePanel("Coffee Shop Data Analysis"),
+  sidebarLayout(
+    sidebarPanel(
+      dateInput("newTransactionDate", "New Transaction Date", value = Sys.Date(), format = "yyyy-mm-dd"),
+      selectInput("newStoreLocation", "Select Store Location", choices = store_locations),
+      actionButton("predictButton", "Predict"),
+      # Add other input controls here if needed
+    ),
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Total Sales per Store", plotOutput("storeSalesPlot")),
+        tabPanel("Top Products", plotOutput("topProductsPlot")),
+        tabPanel("Transactions per Location", plotOutput("transactionsPlot")),
+        tabPanel("Sales per Product Category", plotOutput("categorySalesPlot")),
+        tabPanel("Purchases per Category", plotOutput("purchasesPlot")),
+        tabPanel("Time Series Analysis", plotOutput("timeSeriesPlot")),
+        tabPanel("Linear Regression Predictions", plotOutput("predictionPlot")),
+        tabPanel("New Data Prediction", verbatimTextOutput("newDataPrediction"))
+      )
+    )
+  )
+)
+
+# Server logic
+server <- function(input, output) {
+  
+  # Total Sales per Store Plot
+  output$storeSalesPlot <- renderPlot({
+    sales_by_store <- sales %>%
+      group_by(store_id, store_location) %>%
+      summarise(total_sales = sum(unit_price * transaction_qty))
+
+    ggplot(sales_by_store, aes(x = store_location, y = total_sales, fill = factor(store_location))) +
+      geom_bar(stat = "identity") +
+      labs(title = "Total Sales per Store", x = "Store Location", y = "Total Sales") +
+      theme_minimal()
+  })
+
+  # Top Products Plot
+  output$topProductsPlot <- renderPlot({
+    sales_by_product <- sales %>%
+      group_by(product_id, product_type) %>%
+      summarise(total_sales = sum(unit_price * transaction_qty))
+
+    top_product <- sales_by_product %>%
+      arrange(desc(total_sales)) %>%
+      slice(1)
+
+    ggplot(top_product, aes(x = reorder(product_type, -total_sales), y = total_sales, fill = factor(product_id))) +
+      geom_bar(stat = "identity") +
+      labs(title = "Top Products", x = "Product Type", y = "Total Sales") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+
+  # Transactions per Location Plot
+  output$transactionsPlot <- renderPlot({
+    transactions_by_location <- sales %>%
+      group_by(store_location) %>%
+      summarise(total_transactions = n())
+
+    ggplot(transactions_by_location, aes(x = store_location, y = total_transactions)) +
+      geom_bar(stat = "identity", fill = "skyblue") +
+      labs(title = "Transactions per Location", x = "Store Location", y = "Total Transactions") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+
+  # Sales per Product Category Plot
+  output$categorySalesPlot <- renderPlot({
+    sales_by_category <- sales %>%
+      group_by(product_category) %>%
+      summarise(total_sales = sum(unit_price * transaction_qty))
+
+    ggplot(sales_by_category, aes(x = product_category, y = total_sales, fill = product_category)) +
+      geom_bar(stat = "identity") +
+      labs(title = "Sales per Product Category", x = "Product Category", y = "Total Sales") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+      scale_y_continuous(labels = scales::dollar_format(scale = 1e-3, suffix = "K"))
+  })
+
+  # Purchases per Category Plot
+  output$purchasesPlot <- renderPlot({
+    purchases_by_category <- sales %>%
+      group_by(product_category) %>%
+      summarise(total_purchases = sum(transaction_qty))
+
+    top_category <- purchases_by_category %>%
+      arrange(desc(total_purchases)) %>%
+      slice(1)
+
+    ggplot(purchases_by_category, aes(x = reorder(product_category, -total_purchases), y = total_purchases, fill = product_category)) +
+      geom_bar(stat = "identity") +
+      labs(title = "Purchases per Category", x = "Product Category", y = "Total Purchases") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+      scale_y_continuous(labels = scales::comma_format(scale = 1e-3, suffix = "K")) +
+      geom_text(data = top_category, aes(x = product_category, y = total_purchases, label = total_purchases), vjust = -0.5, size = 4, color = "red")
+  })
+
+  # Time Series Analysis Plot
+  output$timeSeriesPlot <- renderPlot({
+    sales_by_store <- sales %>%
+      mutate(transaction_date = as.Date(transaction_date, format = "%m/%d/%Y"),
+             total_sales = transaction_qty * unit_price)
+
+    data <- sales_by_store %>%
+      group_by(transaction_date, store_location) %>%
+      summarise(total_sales = sum(total_sales))
+
+    ggplot(data, aes(x = transaction_date, y = total_sales, color = store_location)) +
+      geom_line() +
+      labs(title = "Time Series Analysis", x = "Transaction Date", y = "Total Sales") +
+      theme_minimal()
+  })
+
+  # Linear Regression Predictions Plot
+  output$predictionPlot <- renderPlot({
+    set.seed(123)
+    index <- createDataPartition(data$total_sales, p = 0.8, list = FALSE)
+    train_data <- data[index, ]
+    test_data <- data[-index, ]
+    model <- lm(total_sales ~ transaction_date + store_location, data = train_data)
+
+    predictions <- predict(model, newdata = test_data)
+    rmse <- sqrt(mean((predictions - test_data$total_sales)^2))
+
+    ggplot() +
+      geom_point(aes(x = test_data$total_sales, y = predictions)) +
+      geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+      labs(x = "Actual Sales", y = "Predicted Sales", title = paste("Actual vs. Predicted Sales (RMSE =", round(rmse, 2), ")"))
+  })
+  
+   output$newDataPrediction <- renderPrint({
+  req(input$predictButton)  # Wait for button click
+  print("Debug: input$newTransactionDate")
+  print(input$newTransactionDate)
+  new_data <- data.frame(
+    transaction_date = as.Date(input$newTransactionDate),
+    store_location = input$newStoreLocation
+  )
+
+
+  new_prediction <- predict(model, newdata = new_data)
+  formatted_prediction <- scales::dollar(new_prediction)
+  
+  cat("Prediction for", input$newStoreLocation, "on", as.character(input$newTransactionDate), "is", formatted_prediction)
+})
+
+
+}
+
+# Run the Shiny app
+shinyApp(ui, server)
+
+```
+
+
+
+
